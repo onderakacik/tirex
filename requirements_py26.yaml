@@ -29,3 +29,6 @@ dependencies:
       - pandas~=2.2.3
       - dacite~=1.9.2
       - pytest
+      - gdown
+      - scikit-learn
+      - joblib<1.5

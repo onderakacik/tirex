@@ -27,3 +27,9 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Long term forecasting related
+*.csv
+*.pt
+*.out
+*.job
