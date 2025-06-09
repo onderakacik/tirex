@@ -32,3 +32,4 @@ dependencies:
       - gdown
       - scikit-learn
       - joblib<1.5
+      - pathlib
