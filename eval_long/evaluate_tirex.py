@@ -114,9 +114,9 @@ def evaluate_tirex_on_dataset(
     # Save to CSV
     df_row = pd.DataFrame([results])
     if os.path.exists(results_file):
-        df_row.to_csv(dataset_name + "_" + results_file, mode='a', header=False, index=False)
+        df_row.to_csv(results_file, mode='a', header=False, index=False)
     else:
-        df_row.to_csv(dataset_name + "_" + results_file, mode='w', header=True, index=False)
+        df_row.to_csv(results_file, mode='w', header=True, index=False)
     
     return results
 
@@ -151,7 +151,7 @@ def evaluate_multiple_configurations(
                         pred_len=pred_len,
                         features=features,
                         target=target,
-                        results_file=results_file
+                        results_file=dataset_name + "_" + results_file
                     )
                     print(f"Results: MAE={results['mae']:.4f}, MSE={results['mse']:.4f}")
                 except Exception as e:
