@@ -120,7 +120,7 @@ class CustomForecastingDataModule(pl.LightningDataModule):
         self.data_processed_location = root / dataset_name.capitalize() / "processed_data" / self.dataset_name / f"seq_{seq_len}_pred_{pred_len}_{features}"
 
         os.makedirs(self.download_location, exist_ok=True)
-        os.makedirs(self.data_processed_location, exist_ok=True)
+        # os.makedirs(self.data_processed_location, exist_ok=True)
         
         self.data_type = "sequence"
         
@@ -138,22 +138,29 @@ class CustomForecastingDataModule(pl.LightningDataModule):
         if not self.csv_path.exists():
              self._download()
         
-        # Check if processed data exists. If not, process and save it.
-        if not (self.data_processed_location / "train_X.pt").exists():
-            print("Processed data not found. Processing and saving...")
-            self.train_X, self.val_X, self.test_X, self.train_Y, self.val_Y, self.test_Y = self._process_data()
-            save_data(
-                self.data_processed_location,
-                train_X=self.train_X,
-                val_X=self.val_X,
-                test_X=self.test_X,
-                train_y=self.train_Y,
-                val_y=self.val_Y,
-                test_y=self.test_Y,
-            )
-            gc.collect()
-        else:
-            print("Processed data found. Skipping processing in prepare_data.")
+        # # Check if processed data exists. If not, process and save it.
+        # if not (self.data_processed_location / "train_X.pt").exists():
+        #     print("Processed data not found. Processing and saving...")
+        #     self.train_X, self.val_X, self.test_X, self.train_Y, self.val_Y, self.test_Y = self._process_data()
+        #     save_data(
+        #         self.data_processed_location,
+        #         train_X=self.train_X,
+        #         val_X=self.val_X,
+        #         test_X=self.test_X,
+        #         train_y=self.train_Y,
+        #         val_y=self.val_Y,
+        #         test_y=self.test_Y,
+        #     )
+        #     gc.collect()
+        # else:
+        #     print("Processed data found. Skipping processing in prepare_data.")
+
+
+        # Always process data and store in memory - writing to disk and reading later creates memory bottlenecks for large datasets e.g. electricity, traffic, etc.
+        print("Processing data and storing in memory...")
+        self.train_X, self.val_X, self.test_X, self.train_Y, self.val_Y, self.test_Y = self._process_data()
+        gc.collect()
+
 
 
     def setup(self, stage: Optional[str] = None):
