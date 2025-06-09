@@ -9,6 +9,8 @@ import os
 from datetime import datetime
 import argparse
 from typing import List
+import torch.cuda.amp as amp # Import for mixed precision
+from tqdm import tqdm # Import tqdm
 
 
 def evaluate_tirex_on_dataset(
@@ -17,7 +19,7 @@ def evaluate_tirex_on_dataset(
     pred_len: int,
     features: str = "M",
     target: str = "OT",
-    batch_size: int = 32,
+    batch_size: int = 512,
     num_workers: int = 4,
     results_file: str = "tirex_evaluation_results.csv"
 ) -> dict:
@@ -34,8 +36,13 @@ def evaluate_tirex_on_dataset(
         num_workers: Number of workers for data loading
         results_file: Path to CSV file to store results
     """
-    # 1. Load TiRex model
+    # Determine the device to use (GPU if available, otherwise CPU)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    # 1. Load TiRex model and move it to the device
     model: ForecastModel = load_model("NX-AI/TiRex")
+    model.to(device) # Move model to GPU/CPU
     
     # 2. Setup appropriate datamodule based on dataset name
     if dataset_name.lower().startswith('ett'):
@@ -67,27 +74,36 @@ def evaluate_tirex_on_dataset(
             scale=True
         )
     
+    print("Preparing data...")
     datamodule.prepare_data()
+    print("Setting up datamodule...")
     datamodule.setup(stage="test")
+    print("Creating test loader...")
     test_loader = datamodule.test_dataloader()
     
-    # Initialize metrics
-    test_mse = torchmetrics.MeanSquaredError()
-    test_mae = torchmetrics.MeanAbsoluteError()
+    # Initialize metrics and move them to device
+    test_mse = torchmetrics.MeanSquaredError().to(device)
+    test_mae = torchmetrics.MeanAbsoluteError().to(device)
     
-    for batch_x, batch_y in test_loader:
+    # Wrap the test_loader with tqdm for a progress bar
+    progress_bar_desc = f"{dataset_name} (seq={seq_len}, pred={pred_len})"
+    for batch_x, batch_y in tqdm(test_loader, desc=progress_bar_desc):
+        # Move data batches to the device
+        batch_x = batch_x.to(device)
+        batch_y = batch_y.to(device)
+        
         batch_size, n_vars, seq_len = batch_x.shape
         
         # Reshape to 2D for TiRex
         x_2d = batch_x.reshape(-1, seq_len)
         
-        # Get forecasts
-        quantiles, means = model.forecast(
-            context=x_2d,
-            output_type="torch",
-            batch_size=512,
-            prediction_length=pred_len,
-        )
+        # Get forecasts using mixed precision (if on GPU)
+        with amp.autocast(enabled=device.type == 'cuda'): # Enable autocast only if using CUDA
+            quantiles, means = model.forecast(
+                context=x_2d,
+                output_type="torch",
+                prediction_length=pred_len,
+            )
         
         # Reshape predictions back
         means = means.reshape(batch_size, n_vars, pred_len)
@@ -140,6 +156,10 @@ def evaluate_multiple_configurations(
         target: Target variable name
         results_file: Path to CSV file to store results
     """
+
+    num_workers = os.cpu_count() // 4
+    batch_size = 1024
+
     for dataset_name in dataset_names:
         for pred_len in pred_lengths:
             for seq_len in seq_lengths:
@@ -151,7 +171,9 @@ def evaluate_multiple_configurations(
                         pred_len=pred_len,
                         features=features,
                         target=target,
-                        results_file=dataset_name + "_" + results_file
+                        results_file=dataset_name + "_" + results_file,
+                        num_workers=num_workers,
+                        batch_size=batch_size
                     )
                     print(f"Results: MAE={results['mae']:.4f}, MSE={results['mse']:.4f}")
                 except Exception as e:

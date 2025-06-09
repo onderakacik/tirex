@@ -33,3 +33,4 @@ dependencies:
       - scikit-learn
       - joblib<1.5
       - pathlib
+      - tqdm
