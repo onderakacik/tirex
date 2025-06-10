@@ -75,7 +75,7 @@ def evaluate_tirex_on_dataset(
         )
     
     print("Preparing data...")
-    datamodule.prepare_data()
+    datamodule.prepare_data(test_only=True)
     print("Setting up datamodule...")
     datamodule.setup(stage="test")
     print("Creating test loader...")
@@ -107,6 +107,9 @@ def evaluate_tirex_on_dataset(
         
         # Reshape predictions back
         means = means.reshape(batch_size, n_vars, pred_len)
+        
+        # Ensure means is on the correct device before updating metrics
+        means = means.to(device)
         
         # Update metrics
         test_mse.update(means, batch_y)
@@ -158,7 +161,7 @@ def evaluate_multiple_configurations(
     """
 
     num_workers = os.cpu_count() // 4
-    batch_size = 1024
+    batch_size = 128
 
     for dataset_name in dataset_names:
         for pred_len in pred_lengths:

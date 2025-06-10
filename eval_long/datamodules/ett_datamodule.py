@@ -99,23 +99,24 @@ class ETTDataModule(pl.LightningDataModule):
         self.test_X = None
         self.test_Y = None
 
-    def prepare_data(self):
+    def prepare_data(self, test_only: bool = False):
         # Check if processed data exists, if not, download and process
         if not os.path.exists(self.data_processed_location / "train_X.pt"):
             # Download data if not already downloaded
             self._download()
             # Process and save data
             self.train_X, self.val_X, self.test_X, self.train_Y, self.val_Y, self.test_Y = self._process_data()
-            # Save processed data
-            save_data(
-                self.data_processed_location,
-                train_X=self.train_X,
-                val_X=self.val_X,
-                test_X=self.test_X,
-                train_y=self.train_Y,
-                val_y=self.val_Y,
-                test_y=self.test_Y,
-            )
+            # NOTE: removed saving to align with custom_forecasting_datamodule
+            # # Save processed data
+            # save_data(
+            #     self.data_processed_location,
+            #     train_X=self.train_X,
+            #     val_X=self.val_X,
+            #     test_X=self.test_X,
+            #     train_y=self.train_Y,
+            #     val_y=self.val_Y,
+            #     test_y=self.test_Y,
+            # )
             gc.collect()
 
     def setup(self, stage=None):
@@ -217,7 +218,7 @@ class ETTDataModule(pl.LightningDataModule):
         
         print(f"ETT dataset downloaded successfully to {self.download_location}")
 
-    def _process_data(self):
+    def _process_data(self, test_only: bool = False):
         """Process the ETT dataset for forecasting tasks with memory efficiency"""
         print(f"Processing {self.dataset_name} dataset...")
         
@@ -269,29 +270,36 @@ class ETTDataModule(pl.LightningDataModule):
                 Y.append(data[i + seq_len:i + seq_len + pred_len])
             return np.array(X, dtype=np.float32), np.array(Y, dtype=np.float32)
         
-        # Process Train Data
-        print("Creating training sequences...")
-        train_X_np, train_Y_np = create_sequences(
-            data_normalized[border1s[0]:border2s[0]], 
-            self.seq_len, 
-            self.pred_len
-        )
-        train_X = torch.FloatTensor(train_X_np).transpose(1, 2)
-        train_Y = torch.FloatTensor(train_Y_np).transpose(1, 2)
-        del train_X_np, train_Y_np
-        gc.collect()
+        train_X, train_Y = None, None
+        val_X, val_Y = None, None
+        test_X, test_Y = None, None
+        
+        if not test_only:
+            # Process Train Data
+            print("Creating training sequences...")
+            train_X_np, train_Y_np = create_sequences(
+                data_normalized[border1s[0]:border2s[0]], 
+                self.seq_len, 
+                self.pred_len
+            )
+            train_X = torch.FloatTensor(train_X_np).transpose(1, 2)
+            train_Y = torch.FloatTensor(train_Y_np).transpose(1, 2)
+            del train_X_np, train_Y_np
+            gc.collect()
 
-        # Process Validation Data
-        print("Creating validation sequences...")
-        val_X_np, val_Y_np = create_sequences(
-            data_normalized[border1s[1]:border2s[1]], 
-            self.seq_len, 
-            self.pred_len
-        )
-        val_X = torch.FloatTensor(val_X_np).transpose(1, 2)
-        val_Y = torch.FloatTensor(val_Y_np).transpose(1, 2)
-        del val_X_np, val_Y_np
-        gc.collect()
+        if not test_only:
+            # Process Validation Data
+            print("Creating validation sequences...")
+            val_X_np, val_Y_np = create_sequences(
+                data_normalized[border1s[1]:border2s[1]], 
+                self.seq_len, 
+                self.pred_len
+            )
+            val_X = torch.FloatTensor(val_X_np).transpose(1, 2)
+            val_Y = torch.FloatTensor(val_Y_np).transpose(1, 2)
+            del val_X_np, val_Y_np
+            gc.collect()
+
 
         # Process Test Data
         print("Creating testing sequences...")
@@ -310,8 +318,9 @@ class ETTDataModule(pl.LightningDataModule):
         gc.collect()
 
         print(f"Processed data shapes:")
-        print(f"Train X: {train_X.shape}, Train Y: {train_Y.shape}")
-        print(f"Val X: {val_X.shape}, Val Y: {val_Y.shape}")
+        if not test_only:
+            print(f"Train X: {train_X.shape}, Train Y: {train_Y.shape}")
+            print(f"Val X: {val_X.shape}, Val Y: {val_Y.shape}")
         print(f"Test X: {test_X.shape}, Test Y: {test_Y.shape}")
         
         return train_X, val_X, test_X, train_Y, val_Y, test_Y

@@ -133,7 +133,7 @@ class CustomForecastingDataModule(pl.LightningDataModule):
         self.test_X, self.test_Y = None, None
 
 
-    def prepare_data(self):
+    def prepare_data(self, test_only: bool = False):
         # Check if raw data exists, download if not
         if not self.csv_path.exists():
              self._download()
@@ -158,7 +158,7 @@ class CustomForecastingDataModule(pl.LightningDataModule):
 
         # Always process data and store in memory - writing to disk and reading later creates memory bottlenecks for large datasets e.g. electricity, traffic, etc.
         print("Processing data and storing in memory...")
-        self.train_X, self.val_X, self.test_X, self.train_Y, self.val_Y, self.test_Y = self._process_data()
+        self.train_X, self.val_X, self.test_X, self.train_Y, self.val_Y, self.test_Y = self._process_data(test_only=test_only)
         gc.collect()
 
 
@@ -265,7 +265,7 @@ class CustomForecastingDataModule(pl.LightningDataModule):
         else:
             raise FileNotFoundError(f"Failed to find or place {self.dataset_config['file_name']} at {self.csv_path}")
 
-    def _process_data(self):
+    def _process_data(self, test_only: bool = False):
         """
         Processes the dataset into sequences for time series forecasting sequentially
         for train, validation, and test splits to reduce peak memory usage.
@@ -319,29 +319,35 @@ class CustomForecastingDataModule(pl.LightningDataModule):
                 Y.append(data[i + seq_len:i + seq_len + pred_len])
             return np.array(X, dtype=np.float32), np.array(Y, dtype=np.float32)
 
-        # Process Train Data
-        print("Creating training sequences...")
-        train_X_np, train_Y_np = create_sequences(
-            data_normalized[border1s[0]:border2s[0]], 
-            self.seq_len, 
-            self.pred_len
-        )
-        train_X = torch.FloatTensor(train_X_np).transpose(1, 2)
-        train_Y = torch.FloatTensor(train_Y_np).transpose(1, 2)
-        del train_X_np, train_Y_np # Free up memory
-        gc.collect() # Explicitly call garbage collector
+        train_X, train_Y = None, None
+        val_X, val_Y = None, None
+        test_X, test_Y = None, None
+        
+        if not test_only:
+            # Process Train Data
+            print("Creating training sequences...")
+            train_X_np, train_Y_np = create_sequences(
+                data_normalized[border1s[0]:border2s[0]], 
+                self.seq_len, 
+                self.pred_len
+            )
+            train_X = torch.FloatTensor(train_X_np).transpose(1, 2)
+            train_Y = torch.FloatTensor(train_Y_np).transpose(1, 2)
+            del train_X_np, train_Y_np # Free up memory
+            gc.collect() # Explicitly call garbage collector
 
-        # Process Validation Data
-        print("Creating validation sequences...")
-        val_X_np, val_Y_np = create_sequences(
-            data_normalized[border1s[1]:border2s[1]], 
-            self.seq_len, 
-            self.pred_len
-        )
-        val_X = torch.FloatTensor(val_X_np).transpose(1, 2)
-        val_Y = torch.FloatTensor(val_Y_np).transpose(1, 2)
-        del val_X_np, val_Y_np # Free up memory
-        gc.collect() # Explicitly call garbage collector
+        if not test_only:
+            # Process Validation Data
+            print("Creating validation sequences...")
+            val_X_np, val_Y_np = create_sequences(
+                data_normalized[border1s[1]:border2s[1]], 
+                self.seq_len, 
+                self.pred_len
+            )
+            val_X = torch.FloatTensor(val_X_np).transpose(1, 2)
+            val_Y = torch.FloatTensor(val_Y_np).transpose(1, 2)
+            del val_X_np, val_Y_np # Free up memory
+            gc.collect() # Explicitly call garbage collector
 
         # Process Test Data
         print("Creating testing sequences...")
@@ -360,8 +366,9 @@ class CustomForecastingDataModule(pl.LightningDataModule):
         gc.collect()
 
         print(f"Processed data shapes:")
-        print(f"Train X: {train_X.shape}, Train Y: {train_Y.shape}")
-        print(f"Val X: {val_X.shape}, Val Y: {val_Y.shape}")
+        if not test_only:
+            print(f"Train X: {train_X.shape}, Train Y: {train_Y.shape}")
+            print(f"Val X: {val_X.shape}, Val Y: {val_Y.shape}")
         print(f"Test X: {test_X.shape}, Test Y: {test_Y.shape}")
         
         return train_X, val_X, test_X, train_Y, val_Y, test_Y 
